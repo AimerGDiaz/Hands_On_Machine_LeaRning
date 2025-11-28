@@ -1,0 +1,1157 @@
+Lab2 – Advanced Classification Methods in R
+================
+
+# 1. Overview
+
+In this lab, you will work with several **classification methods**
+beyond logistic regression and penalized models.
+
+We will:
+
+- Introduce **discriminant analysis**:
+  - Linear Discriminant Analysis (**LDA**)
+  - Quadratic Discriminant Analysis (**QDA**, a non-linear boundary)
+- Fit **classification trees** and explore **decision boundaries**.
+- Compare **bagging**, **random forests**, and **boosting**.
+- Fit **support vector machines (SVMs)** with:
+  - Linear kernel
+  - Non-linear (radial basis function, RBF) kernel
+- Compute **AUC (Area Under the ROC Curve)** for each model.
+- Use the **caret** package to perform **10-fold cross-validation** and
+  compare models using ROC.
+
+We will primarily use a **simulated two-class dataset** so that:
+
+- The true relationship between predictors and class is **non-linear**.
+- We can compare how different methods handle non-linearity.
+
+Required packages (install if needed):
+
+``` r
+# install.packages("ggplot2")
+# install.packages("dplyr")
+# install.packages("MASS")         # LDA/QDA
+# install.packages("rpart")        # Decision trees
+# install.packages("rpart.plot")   # Tree plotting
+# install.packages("randomForest") # Bagging and Random Forest
+# install.packages("gbm")          # Boosting
+# install.packages("e1071")        # SVM
+# install.packages("pROC")         # AUC / ROC
+# install.packages("caret")        # Unified ML interface & CV
+```
+
+``` r
+library(ggplot2)
+library(dplyr)
+library(MASS)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+library(e1071)
+library(pROC)
+library(caret)
+```
+
+# 2. Simulated Two-Class Data (Non-Linear Boundary)
+
+In this section we:
+
+1.  Simulate a two-dimensional predictor space $(X_1, X_2)$.
+2.  Generate a binary class $Y$ using a **non-linear** decision
+    boundary.
+3.  Split the data into **training** and **test** sets.
+4.  Define helper functions to compute **evaluation metrics** and
+    **AUC**.
+
+## 2.1 Simulate data
+
+We simulate 600 observations with two predictors. The class label is
+defined using a non-linear function of $X_1$ and $X_2$.
+
+``` r
+set.seed(123)
+
+n <- 600
+
+x1 <- rnorm(n, mean = 0, sd = 1)
+x2 <- rnorm(n, mean = 0, sd = 1)
+
+# Non-linear decision rule: circle + tilt
+eta <- x1^2 + x2^2 + 0.5 * x1 - x2
+
+# Convert to probability via logistic transform
+p   <- 1 / (1 + exp(-eta))
+
+y   <- rbinom(n, size = 1, prob = p)
+
+sim_df <- data.frame(
+  y  = factor(y, levels = c(0, 1), labels = c("Class0", "Class1")),
+  x1 = x1,
+  x2 = x2
+)
+
+head(sim_df)
+```
+
+    ##        y          x1          x2
+    ## 1 Class0 -0.56047565  1.07401226
+    ## 2 Class1 -0.23017749 -0.02734697
+    ## 3 Class1  1.55870831 -0.03333034
+    ## 4 Class1  0.07050839 -1.51606762
+    ## 5 Class1  0.12928774  0.79038534
+    ## 6 Class1  1.71506499 -0.21073418
+
+``` r
+table(sim_df$y)
+```
+
+    ## 
+    ## Class0 Class1 
+    ##    135    465
+
+## 2.2 Visualize the simulated data
+
+``` r
+ggplot(sim_df, aes(x = x1, y = x2, color = y)) +
+  geom_point(alpha = 0.6) +
+  theme_minimal() +
+  labs(title = "Simulated Two-Class Data (Non-Linear Relationship)",
+       color = "Class")
+```
+
+![](Readme_files/figure-gfm/visualize_data-1.png)<!-- -->
+
+**Question (for students):**
+
+- Does the class separation look roughly linear or clearly non-linear?
+
+## 2.3 Train–test split
+
+We split into 70% training and 30% test set.
+
+``` r
+set.seed(123)
+train_index <- sample(seq_len(nrow(sim_df)), size = 0.7 * nrow(sim_df))
+
+train <- sim_df[train_index, ]
+test  <- sim_df[-train_index, ]
+
+nrow(train); nrow(test)
+```
+
+    ## [1] 420
+
+    ## [1] 180
+
+## 2.4 Helper functions for evaluation metrics and AUC
+
+We define functions that return:
+
+- **Confusion matrix**
+- **Accuracy**
+- **Sensitivity** (recall for Class1)
+- **Specificity** (true negative rate for Class0)
+- **AUC (Area Under the ROC Curve)** when given predicted probabilities.
+
+``` r
+eval_metrics <- function(truth, pred) {
+  truth <- factor(truth)
+  pred  <- factor(pred, levels = levels(truth))
+
+  cm <- table(Predicted = pred, Observed = truth)
+
+  # Handle possible missing cells
+  tp <- ifelse("Class1" %in% rownames(cm) && "Class1" %in% colnames(cm),
+               cm["Class1", "Class1"], 0)
+  tn <- ifelse("Class0" %in% rownames(cm) && "Class0" %in% colnames(cm),
+               cm["Class0", "Class0"], 0)
+  fp <- ifelse("Class1" %in% rownames(cm) && "Class0" %in% colnames(cm),
+               cm["Class1", "Class0"], 0)
+  fn <- ifelse("Class0" %in% rownames(cm) && "Class1" %in% colnames(cm),
+               cm["Class0", "Class1"], 0)
+
+  accuracy    <- (tp + tn) / sum(cm)
+  sensitivity <- ifelse((tp + fn) > 0, tp / (tp + fn), NA)
+  specificity <- ifelse((tn + fp) > 0, tn / (tn + fp), NA)
+
+  list(
+    confusion_matrix = cm,
+    accuracy         = accuracy,
+    sensitivity      = sensitivity,
+    specificity      = specificity
+  )
+}
+
+compute_auc <- function(truth, prob_positive) {
+  # truth: factor with levels including "Class1"
+  # prob_positive: numeric vector of predicted P(Class1)
+  truth_num <- ifelse(truth == "Class1", 1, 0)
+  roc_obj <- roc(truth_num, as.numeric(prob_positive), quiet = TRUE)
+  as.numeric(auc(roc_obj))
+}
+```
+
+# 3. 10-fold Cross-Validation with caret (Overview)
+
+In this section, we briefly illustrate how to use the **caret** package
+to:
+
+- Perform **10-fold cross-validation**,
+- Compare models using **ROC (AUC)**,
+- Use a unified interface (`train()`) for different algorithms.
+
+Later sections will fit each model “manually”, but here we show how
+caret automates:
+
+1.  Resampling (10-fold CV),
+2.  Hyperparameter tuning (where applicable),
+3.  Calculation of performance metrics (ROC, sensitivity, specificity).
+
+## 3.1 Set up caret training control
+
+We set `summaryFunction = twoClassSummary` so that caret reports ROC,
+sensitivity, and specificity.
+
+``` r
+set.seed(123)
+
+# Make Class1 the "positive" class for ROC calculation
+train_cv <- train
+train_cv$y <- relevel(train_cv$y, ref = "Class1")
+
+ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = "final"
+)
+```
+
+## 3.2 Fit several models with caret (10-fold CV)
+
+We fit a few representative models with the same resampling scheme:
+
+- LDA / QDA
+- Classification tree
+- Random forest
+- GBM (boosting)
+- Linear SVM
+- RBF SVM
+
+``` r
+set.seed(123)
+lda_caret <- train(
+  y ~ x1 + x2,
+  data = train_cv,
+  method = "lda",
+  metric = "ROC",
+  trControl = ctrl
+)
+
+set.seed(123)
+qda_caret <- train(
+  y ~ x1 + x2,
+  data = train_cv,
+  method = "qda",
+  metric = "ROC",
+  trControl = ctrl
+)
+
+set.seed(123)
+tree_caret <- train(
+  y ~ x1 + x2,
+  data = train_cv,
+  method = "rpart",
+  metric = "ROC",
+  trControl = ctrl
+)
+
+set.seed(123)
+rf_caret <- train(
+  y ~ x1 + x2,
+  data = train_cv,
+  method = "rf",
+  metric = "ROC",
+  trControl = ctrl
+)
+```
+
+    ## note: only 1 unique complexity parameters in default grid. Truncating the grid to 1 .
+
+``` r
+set.seed(123)
+gbm_caret <- train(
+  y ~ x1 + x2,
+  data = train_cv,
+  method = "gbm",
+  metric = "ROC",
+  trControl = ctrl,
+  verbose = FALSE
+)
+
+set.seed(123)
+svm_linear_caret <- train(
+  y ~ x1 + x2,
+  data = train_cv,
+  method = "svmLinear",
+  metric = "ROC",
+  trControl = ctrl
+)
+```
+
+    ## maximum number of iterations reached -0.0002999688 -0.0003000287maximum number of iterations reached 0.000140297 0.000140297maximum number of iterations reached 1.455673e-05 1.455668e-05maximum number of iterations reached -0.0006698089 -0.000669883maximum number of iterations reached 4.962175e-05 4.962196e-05maximum number of iterations reached 0.0002299645 0.000229958maximum number of iterations reached -0.0003477973 -0.0003478034maximum number of iterations reached -0.0001166287 -0.0001166296maximum number of iterations reached 7.296285e-05 7.296259e-05maximum number of iterations reached 2.395311e-05 2.3953e-05maximum number of iterations reached 0.0002141375 0.0002141141
+
+``` r
+set.seed(123)
+svm_rbf_caret <- train(
+  y ~ x1 + x2,
+  data = train_cv,
+  method = "svmRadial",
+  metric = "ROC",
+  trControl = ctrl
+)
+```
+
+Summarize cross-validated performance:
+
+``` r
+caret_resamps <- resamples(list(
+  LDA        = lda_caret,
+  QDA        = qda_caret,
+  Tree       = tree_caret,
+  RF         = rf_caret,
+  GBM        = gbm_caret,
+  SVM_Linear = svm_linear_caret,
+  SVM_RBF    = svm_rbf_caret
+))
+
+summary(caret_resamps)
+```
+
+    ## 
+    ## Call:
+    ## summary.resamples(object = caret_resamps)
+    ## 
+    ## Models: LDA, QDA, Tree, RF, GBM, SVM_Linear, SVM_RBF 
+    ## Number of resamples: 10 
+    ## 
+    ## ROC 
+    ##                 Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+    ## LDA        0.4848485 0.6002762 0.6279461 0.6326021 0.6828125 0.8250000    0
+    ## QDA        0.6666667 0.7433607 0.7891309 0.7786553 0.7996633 0.8968750    0
+    ## Tree       0.5833333 0.7039062 0.7512889 0.7547843 0.8278620 0.8984375    0
+    ## RF         0.6500000 0.6802320 0.7706887 0.7546496 0.8203993 0.8515625    0
+    ## GBM        0.6625000 0.7326323 0.7744108 0.7668950 0.8061632 0.8640625    0
+    ## SVM_Linear 0.3250000 0.4907407 0.5707071 0.5595918 0.6492187 0.7070707    0
+    ## SVM_RBF    0.5242424 0.6722564 0.7441077 0.7108596 0.7570313 0.8718750    0
+    ## 
+    ## Sens 
+    ##                 Min.   1st Qu.    Median      Mean   3rd Qu.     Max. NA's
+    ## LDA        0.9393939 1.0000000 1.0000000 0.9939394 1.0000000 1.000000    0
+    ## QDA        0.9687500 1.0000000 1.0000000 0.9968750 1.0000000 1.000000    0
+    ## Tree       0.7272727 0.8437500 0.8768939 0.8771780 0.9389205 0.969697    0
+    ## RF         0.8181818 0.8759470 0.9062500 0.9045455 0.9318182 1.000000    0
+    ## GBM        0.8181818 0.8828125 0.9232955 0.9141098 0.9614110 0.969697    0
+    ## SVM_Linear 1.0000000 1.0000000 1.0000000 1.0000000 1.0000000 1.000000    0
+    ## SVM_RBF    0.8787879 1.0000000 1.0000000 0.9816288 1.0000000 1.000000    0
+    ## 
+    ## Spec 
+    ##                 Min.   1st Qu.    Median       Mean   3rd Qu.      Max. NA's
+    ## LDA        0.0000000 0.0000000 0.0000000 0.00000000 0.0000000 0.0000000    0
+    ## QDA        0.0000000 0.0000000 0.0000000 0.01111111 0.0000000 0.1111111    0
+    ## Tree       0.3000000 0.3083333 0.3333333 0.37777778 0.4166667 0.6000000    0
+    ## RF         0.1111111 0.2416667 0.3166667 0.34444444 0.4000000 0.6000000    0
+    ## GBM        0.0000000 0.1027778 0.2111111 0.18111111 0.2222222 0.4000000    0
+    ## SVM_Linear 0.0000000 0.0000000 0.0000000 0.00000000 0.0000000 0.0000000    0
+    ## SVM_RBF    0.0000000 0.0000000 0.0000000 0.01111111 0.0000000 0.1111111    0
+
+**Question (for students):**
+
+- Which models have the highest **cross-validated ROC** according to
+  caret?
+
+# 4. Linear and Quadratic Discriminant Analysis
+
+We now fit and evaluate discriminant analysis models **directly**, using
+the training/test split and computing AUC for each model.
+
+## 4.1 LDA (Linear Discriminant Analysis)
+
+``` r
+lda_fit <- lda(y ~ x1 + x2, data = train)
+lda_fit
+```
+
+    ## Call:
+    ## lda(y ~ x1 + x2, data = train)
+    ## 
+    ## Prior probabilities of groups:
+    ##    Class0    Class1 
+    ## 0.2261905 0.7738095 
+    ## 
+    ## Group means:
+    ##                 x1         x2
+    ## Class0 -0.05845124  0.3104477
+    ## Class1  0.07439513 -0.1115779
+    ## 
+    ## Coefficients of linear discriminants:
+    ##           LD1
+    ## x1  0.3024160
+    ## x2 -0.9809593
+
+Predict on the test set and evaluate:
+
+``` r
+lda_pred_obj <- predict(lda_fit, newdata = test)
+
+lda_class <- lda_pred_obj$class
+lda_prob  <- lda_pred_obj$posterior[, "Class1"]
+
+lda_results <- eval_metrics(truth = test$y, pred = lda_class)
+lda_auc     <- compute_auc(truth = test$y, prob_positive = lda_prob)
+
+lda_results$confusion_matrix
+```
+
+    ##          Observed
+    ## Predicted Class0 Class1
+    ##    Class0      0      1
+    ##    Class1     40    139
+
+``` r
+lda_results$accuracy
+```
+
+    ## [1] 0.7722222
+
+``` r
+lda_results$sensitivity
+```
+
+    ## [1] 0.9928571
+
+``` r
+lda_results$specificity
+```
+
+    ## [1] 0
+
+``` r
+lda_auc
+```
+
+    ## [1] 0.5623214
+
+## 4.2 QDA (Quadratic Discriminant Analysis)
+
+``` r
+qda_fit <- qda(y ~ x1 + x2, data = train)
+qda_fit
+```
+
+    ## Call:
+    ## qda(y ~ x1 + x2, data = train)
+    ## 
+    ## Prior probabilities of groups:
+    ##    Class0    Class1 
+    ## 0.2261905 0.7738095 
+    ## 
+    ## Group means:
+    ##                 x1         x2
+    ## Class0 -0.05845124  0.3104477
+    ## Class1  0.07439513 -0.1115779
+
+Predict and evaluate:
+
+``` r
+qda_pred_obj <- predict(qda_fit, newdata = test)
+
+qda_class <- qda_pred_obj$class
+qda_prob  <- qda_pred_obj$posterior[, "Class1"]
+
+qda_results <- eval_metrics(truth = test$y, pred = qda_class)
+qda_auc     <- compute_auc(truth = test$y, prob_positive = qda_prob)
+
+qda_results$confusion_matrix
+```
+
+    ##          Observed
+    ## Predicted Class0 Class1
+    ##    Class0      0      0
+    ##    Class1     40    140
+
+``` r
+qda_results$accuracy
+```
+
+    ## [1] 0.7777778
+
+``` r
+qda_results$sensitivity
+```
+
+    ## [1] 1
+
+``` r
+qda_results$specificity
+```
+
+    ## [1] 0
+
+``` r
+qda_auc
+```
+
+    ## [1] 0.7705357
+
+**Questions (for students):**
+
+1.  Compare LDA and QDA accuracy, sensitivity, and AUC.
+2.  Which method seems to capture the non-linearity better?
+
+# 5. Classification Trees
+
+Decision trees partition the predictor space using simple **if/else
+rules** (e.g., $x_1 < 0.3$). They are:
+
+- Easy to interpret,
+- Able to capture **non-linear** relationships,
+- But can be **unstable** and high-variance.
+
+## 5.1 Fit a classification tree
+
+``` r
+tree_fit <- rpart(y ~ x1 + x2,
+                  data = train,
+                  method = "class",
+                  control = rpart.control(cp = 0.01, minbucket = 10))
+
+printcp(tree_fit)  # complexity parameter table
+```
+
+    ## 
+    ## Classification tree:
+    ## rpart(formula = y ~ x1 + x2, data = train, method = "class", 
+    ##     control = rpart.control(cp = 0.01, minbucket = 10))
+    ## 
+    ## Variables actually used in tree construction:
+    ## [1] x1 x2
+    ## 
+    ## Root node error: 95/420 = 0.22619
+    ## 
+    ## n= 420 
+    ## 
+    ##         CP nsplit rel error xerror     xstd
+    ## 1 0.015789      0   1.00000 1.0000 0.090252
+    ## 2 0.010000     12   0.68421 1.1474 0.094568
+
+Plot the tree:
+
+``` r
+rpart.plot(tree_fit, main = "Classification Tree")
+```
+
+![](Readme_files/figure-gfm/tree_plot-1.png)<!-- -->
+
+## 5.2 Predict and evaluate
+
+``` r
+tree_prob  <- predict(tree_fit, newdata = test, type = "prob")[, "Class1"]
+tree_class <- ifelse(tree_prob > 0.5, "Class1", "Class0")
+tree_class <- factor(tree_class, levels = levels(test$y))
+
+tree_results <- eval_metrics(truth = test$y, pred = tree_class)
+tree_auc     <- compute_auc(truth = test$y, prob_positive = tree_prob)
+
+tree_results$confusion_matrix
+```
+
+    ##          Observed
+    ## Predicted Class0 Class1
+    ##    Class0      9     17
+    ##    Class1     31    123
+
+``` r
+tree_results$accuracy
+```
+
+    ## [1] 0.7333333
+
+``` r
+tree_results$sensitivity
+```
+
+    ## [1] 0.8785714
+
+``` r
+tree_results$specificity
+```
+
+    ## [1] 0.225
+
+``` r
+tree_auc
+```
+
+    ## [1] 0.7529464
+
+**Question (for students):**
+
+- How does the tree accuracy and AUC compare to LDA and QDA?
+
+# 6. Bagging and Random Forest
+
+Trees can be unstable. **Bagging** (Bootstrap Aggregating) and **Random
+Forests** help by:
+
+- Fitting many trees on bootstrap samples of the data, then
+- Averaging predictions (for classification, majority vote).
+
+Difference:
+
+- **Bagging**: each tree uses **all predictors** at each split.
+- **Random Forest**: each tree considers a **random subset of
+  predictors** at each split, adding more randomness to reduce
+  correlation between trees.
+
+We use the `randomForest` package for both.
+
+## 6.1 Bagging (mtry = number of predictors)
+
+``` r
+set.seed(123)
+p <- 2  # number of predictors (x1, x2)
+
+bagging_fit <- randomForest(
+  y ~ x1 + x2,
+  data = train,
+  mtry = p,            # all predictors at each split => bagging
+  ntree = 500,
+  importance = TRUE
+)
+
+bagging_fit
+```
+
+    ## 
+    ## Call:
+    ##  randomForest(formula = y ~ x1 + x2, data = train, mtry = p, ntree = 500,      importance = TRUE) 
+    ##                Type of random forest: classification
+    ##                      Number of trees: 500
+    ## No. of variables tried at each split: 2
+    ## 
+    ##         OOB estimate of  error rate: 22.38%
+    ## Confusion matrix:
+    ##        Class0 Class1 class.error
+    ## Class0     36     59   0.6210526
+    ## Class1     35    290   0.1076923
+
+``` r
+varImpPlot(bagging_fit, main = "Variable Importance (Bagging)")
+```
+
+![](Readme_files/figure-gfm/bagging_fit-1.png)<!-- -->
+
+Predict and evaluate:
+
+``` r
+bagging_prob  <- predict(bagging_fit, newdata = test, type = "prob")[, "Class1"]
+bagging_class <- ifelse(bagging_prob > 0.5, "Class1", "Class0")
+bagging_class <- factor(bagging_class, levels = levels(test$y))
+
+bagging_results <- eval_metrics(truth = test$y, pred = bagging_class)
+bagging_auc     <- compute_auc(truth = test$y, prob_positive = bagging_prob)
+
+bagging_results$confusion_matrix
+```
+
+    ##          Observed
+    ## Predicted Class0 Class1
+    ##    Class0     11     19
+    ##    Class1     29    121
+
+``` r
+bagging_results$accuracy
+```
+
+    ## [1] 0.7333333
+
+``` r
+bagging_results$sensitivity
+```
+
+    ## [1] 0.8642857
+
+``` r
+bagging_results$specificity
+```
+
+    ## [1] 0.275
+
+``` r
+bagging_auc
+```
+
+    ## [1] 0.7348214
+
+## 6.2 Random Forest (mtry \< number of predictors)
+
+``` r
+set.seed(123)
+rf_fit <- randomForest(
+  y ~ x1 + x2,
+  data = train,
+  mtry = 1,           # random subset of predictors at each split
+  ntree = 500,
+  importance = TRUE
+)
+
+rf_fit
+```
+
+    ## 
+    ## Call:
+    ##  randomForest(formula = y ~ x1 + x2, data = train, mtry = 1, ntree = 500,      importance = TRUE) 
+    ##                Type of random forest: classification
+    ##                      Number of trees: 500
+    ## No. of variables tried at each split: 1
+    ## 
+    ##         OOB estimate of  error rate: 22.62%
+    ## Confusion matrix:
+    ##        Class0 Class1 class.error
+    ## Class0     30     65  0.68421053
+    ## Class1     30    295  0.09230769
+
+``` r
+varImpPlot(rf_fit, main = "Variable Importance (Random Forest)")
+```
+
+![](Readme_files/figure-gfm/rf_fit-1.png)<!-- -->
+
+Predict and evaluate:
+
+``` r
+rf_prob  <- predict(rf_fit, newdata = test, type = "prob")[, "Class1"]
+rf_class <- ifelse(rf_prob > 0.5, "Class1", "Class0")
+rf_class <- factor(rf_class, levels = levels(test$y))
+
+rf_results <- eval_metrics(truth = test$y, pred = rf_class)
+rf_auc     <- compute_auc(truth = test$y, prob_positive = rf_prob)
+
+rf_results$confusion_matrix
+```
+
+    ##          Observed
+    ## Predicted Class0 Class1
+    ##    Class0      8     19
+    ##    Class1     32    121
+
+``` r
+rf_results$accuracy
+```
+
+    ## [1] 0.7166667
+
+``` r
+rf_results$sensitivity
+```
+
+    ## [1] 0.8642857
+
+``` r
+rf_results$specificity
+```
+
+    ## [1] 0.2
+
+``` r
+rf_auc
+```
+
+    ## [1] 0.726875
+
+**Questions (for students):**
+
+1.  Compare bagging vs random forest performance.
+2.  Which method seems to perform best so far on this simulated dataset
+    (in terms of AUC)?
+
+# 7. Boosting
+
+**Boosting** builds trees **sequentially**, where each new tree focuses
+on the mistakes of the previous ones. It often:
+
+- Achieves high predictive performance,
+- Requires tuning of several hyperparameters (learning rate, depth,
+  number of trees),
+- Is less interpretable than a single tree.
+
+We use the `gbm` package with a **Bernoulli** (logistic) loss.
+
+## 7.1 Fit a boosted model
+
+For `gbm`, the outcome should be numeric (0/1):
+
+``` r
+set.seed(123)
+
+train_gbm <- train
+train_gbm$y_num <- ifelse(train_gbm$y == "Class1", 1, 0)
+
+gbm_fit <- gbm(
+  formula = y_num ~ x1 + x2,
+  data    = train_gbm,
+  distribution = "bernoulli",
+  n.trees = 1000,
+  interaction.depth = 2,
+  shrinkage = 0.01,
+  n.minobsinnode = 10,
+  verbose = FALSE
+)
+
+gbm_fit
+```
+
+    ## gbm(formula = y_num ~ x1 + x2, distribution = "bernoulli", data = train_gbm, 
+    ##     n.trees = 1000, interaction.depth = 2, n.minobsinnode = 10, 
+    ##     shrinkage = 0.01, verbose = FALSE)
+    ## A gradient boosted model with bernoulli loss function.
+    ## 1000 iterations were performed.
+    ## There were 2 predictors of which 2 had non-zero influence.
+
+``` r
+summary(gbm_fit)  # variable importance
+```
+
+![](Readme_files/figure-gfm/gbm_fit-1.png)<!-- -->
+
+    ##    var  rel.inf
+    ## x1  x1 50.15544
+    ## x2  x2 49.84456
+
+## 7.2 Predict and evaluate
+
+``` r
+test_gbm <- test
+test_gbm$y_num <- ifelse(test_gbm$y == "Class1", 1, 0)
+
+# Predicted probabilities
+gbm_prob <- predict(gbm_fit,
+                    newdata = test_gbm,
+                    n.trees = 1000,
+                    type = "response")
+
+gbm_class <- ifelse(gbm_prob > 0.5, "Class1", "Class0")
+gbm_class <- factor(gbm_class, levels = levels(test$y))
+
+gbm_results <- eval_metrics(truth = test$y, pred = gbm_class)
+gbm_auc     <- compute_auc(truth = test$y, prob_positive = gbm_prob)
+
+gbm_results$confusion_matrix
+```
+
+    ##          Observed
+    ## Predicted Class0 Class1
+    ##    Class0      6     13
+    ##    Class1     34    127
+
+``` r
+gbm_results$accuracy
+```
+
+    ## [1] 0.7388889
+
+``` r
+gbm_results$sensitivity
+```
+
+    ## [1] 0.9071429
+
+``` r
+gbm_results$specificity
+```
+
+    ## [1] 0.15
+
+``` r
+gbm_auc
+```
+
+    ## [1] 0.7582143
+
+**Question (for students):**
+
+- How does boosting compare to random forests in terms of accuracy,
+  sensitivity, and AUC?
+
+# 8. Support Vector Machines (SVM)
+
+**Support Vector Machines** try to find a hyperplane that best separates
+classes, possibly in a **transformed feature space**.
+
+- With a **linear kernel**, the decision boundary is linear.
+- With a **non-linear kernel** (e.g., RBF), the boundary can be highly
+  flexible.
+
+We use `e1071::svm`. We request **class probabilities** to compute AUC.
+
+## 8.1 SVM with linear kernel
+
+``` r
+set.seed(123)
+svm_linear <- svm(
+  y ~ x1 + x2,
+  data = train,
+  kernel = "linear",
+  cost   = 1,
+  scale  = TRUE,
+  probability = TRUE
+)
+
+svm_linear
+```
+
+    ## 
+    ## Call:
+    ## svm(formula = y ~ x1 + x2, data = train, kernel = "linear", cost = 1, 
+    ##     probability = TRUE, scale = TRUE)
+    ## 
+    ## 
+    ## Parameters:
+    ##    SVM-Type:  C-classification 
+    ##  SVM-Kernel:  linear 
+    ##        cost:  1 
+    ## 
+    ## Number of Support Vectors:  192
+
+Predict and evaluate:
+
+``` r
+svm_linear_pred_obj <- predict(svm_linear, newdata = test, probability = TRUE)
+
+svm_linear_class <- svm_linear_pred_obj
+svm_linear_prob  <- attr(svm_linear_pred_obj, "probabilities")[, "Class1"]
+
+svm_linear_results <- eval_metrics(truth = test$y, pred = svm_linear_class)
+svm_linear_auc     <- compute_auc(truth = test$y, prob_positive = svm_linear_prob)
+
+svm_linear_results$confusion_matrix
+```
+
+    ##          Observed
+    ## Predicted Class0 Class1
+    ##    Class0      0      0
+    ##    Class1     40    140
+
+``` r
+svm_linear_results$accuracy
+```
+
+    ## [1] 0.7777778
+
+``` r
+svm_linear_results$sensitivity
+```
+
+    ## [1] 1
+
+``` r
+svm_linear_results$specificity
+```
+
+    ## [1] 0
+
+``` r
+svm_linear_auc
+```
+
+    ## [1] 0.5664286
+
+## 8.2 SVM with RBF (radial) kernel – non-linear
+
+``` r
+set.seed(123)
+svm_rbf <- svm(
+  y ~ x1 + x2,
+  data = train,
+  kernel = "radial",
+  cost   = 1,
+  gamma  = 0.5,  # controls non-linearity; can be tuned
+  scale  = TRUE,
+  probability = TRUE
+)
+
+svm_rbf
+```
+
+    ## 
+    ## Call:
+    ## svm(formula = y ~ x1 + x2, data = train, kernel = "radial", cost = 1, 
+    ##     gamma = 0.5, probability = TRUE, scale = TRUE)
+    ## 
+    ## 
+    ## Parameters:
+    ##    SVM-Type:  C-classification 
+    ##  SVM-Kernel:  radial 
+    ##        cost:  1 
+    ## 
+    ## Number of Support Vectors:  227
+
+Predict and evaluate:
+
+``` r
+svm_rbf_pred_obj <- predict(svm_rbf, newdata = test, probability = TRUE)
+
+svm_rbf_class <- svm_rbf_pred_obj
+svm_rbf_prob  <- attr(svm_rbf_pred_obj, "probabilities")[, "Class1"]
+
+svm_rbf_results <- eval_metrics(truth = test$y, pred = svm_rbf_class)
+svm_rbf_auc     <- compute_auc(truth = test$y, prob_positive = svm_rbf_prob)
+
+svm_rbf_results$confusion_matrix
+```
+
+    ##          Observed
+    ## Predicted Class0 Class1
+    ##    Class0      0      0
+    ##    Class1     40    140
+
+``` r
+svm_rbf_results$accuracy
+```
+
+    ## [1] 0.7777778
+
+``` r
+svm_rbf_results$sensitivity
+```
+
+    ## [1] 1
+
+``` r
+svm_rbf_results$specificity
+```
+
+    ## [1] 0
+
+``` r
+svm_rbf_auc
+```
+
+    ## [1] 0.705
+
+**Questions (for students):**
+
+1.  Compare the linear vs RBF SVM performance (accuracy, sensitivity,
+    AUC).
+2.  On this non-linear problem, which kernel seems more appropriate?
+
+# 9. Summary: Method Comparison on Simulated Data
+
+Let us collect **accuracy**, **sensitivity**, **specificity**, and
+**AUC** for all methods.
+
+``` r
+results_summary <- data.frame(
+  Method      = c("LDA", "QDA",
+                  "Tree",
+                  "Bagging",
+                  "Random Forest",
+                  "Boosting (GBM)",
+                  "SVM (Linear)",
+                  "SVM (RBF)"),
+  Accuracy    = c(lda_results$accuracy,
+                  qda_results$accuracy,
+                  tree_results$accuracy,
+                  bagging_results$accuracy,
+                  rf_results$accuracy,
+                  gbm_results$accuracy,
+                  svm_linear_results$accuracy,
+                  svm_rbf_results$accuracy),
+  Sensitivity = c(lda_results$sensitivity,
+                  qda_results$sensitivity,
+                  tree_results$sensitivity,
+                  bagging_results$sensitivity,
+                  rf_results$sensitivity,
+                  gbm_results$sensitivity,
+                  svm_linear_results$sensitivity,
+                  svm_rbf_results$sensitivity),
+  Specificity = c(lda_results$specificity,
+                  qda_results$specificity,
+                  tree_results$specificity,
+                  bagging_results$specificity,
+                  rf_results$specificity,
+                  gbm_results$specificity,
+                  svm_linear_results$specificity,
+                  svm_rbf_results$specificity),
+  AUC         = c(lda_auc,
+                  qda_auc,
+                  tree_auc,
+                  bagging_auc,
+                  rf_auc,
+                  gbm_auc,
+                  svm_linear_auc,
+                  svm_rbf_auc)
+)
+
+results_summary
+```
+
+    ##           Method  Accuracy Sensitivity Specificity       AUC
+    ## 1            LDA 0.7722222   0.9928571       0.000 0.5623214
+    ## 2            QDA 0.7777778   1.0000000       0.000 0.7705357
+    ## 3           Tree 0.7333333   0.8785714       0.225 0.7529464
+    ## 4        Bagging 0.7333333   0.8642857       0.275 0.7348214
+    ## 5  Random Forest 0.7166667   0.8642857       0.200 0.7268750
+    ## 6 Boosting (GBM) 0.7388889   0.9071429       0.150 0.7582143
+    ## 7   SVM (Linear) 0.7777778   1.0000000       0.000 0.5664286
+    ## 8      SVM (RBF) 0.7777778   1.0000000       0.000 0.7050000
+
+**Questions (for students):**
+
+1.  Which methods achieve the **highest AUC** on this simulated dataset?
+2.  Are there methods that trade off **sensitivity** and **specificity**
+    differently?
+3.  Do methods that model **non-linear decision boundaries** (QDA,
+    trees, RF, boosting, SVM-RBF) generally outperform linear methods
+    (LDA, SVM-linear) on this non-linear problem?
+
+# 10. Reflection
+
+1.  **Discriminant Analysis (LDA/QDA)**
+    - When might LDA be sufficient, and when is QDA preferable?
+    - How do their assumptions about covariance matrices differ?
+2.  **Trees, Bagging, Random Forests, Boosting**
+    - What are the advantages and disadvantages of a single tree versus
+      ensembles (bagging, random forest, boosting)?
+    - How do these methods handle:
+      - Non-linear relationships?
+      - Interactions between predictors?
+      - Variable importance assessment?
+3.  **SVMs**
+    - In what scenarios is a **linear SVM** appropriate?
+    - When would you choose a **non-linear kernel** (such as RBF)
+      instead?
+4.  **Model Choice in Practice**
+    - For your own research data, which of these methods might be:
+      - Most interpretable for collaborators?
+      - Most likely to give the best predictive performance?
+    - How would you communicate the trade-off between interpretability
+      and accuracy to a clinical or applied collaborator?
+
+------------------------------------------------------------------------
+
+**End of Lab 2**
+
+Try experimenting with:
+
+- Different simulation settings (sample size, noise level,
+  non-linearity),
+- Additional tuning of hyperparameters (e.g., `cost` and `gamma` for
+  SVMs, `mtry` and `ntree` for random forests, learning rate and depth
+  for boosting),
+- Applying these methods (both direct fits and caret with
+  cross-validation) to a **real dataset** from your own research
+  context.
