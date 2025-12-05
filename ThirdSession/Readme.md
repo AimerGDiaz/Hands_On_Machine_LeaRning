@@ -189,13 +189,13 @@ call the packages:
     ## Sepal.Length  Sepal.Width Petal.Length  Petal.Width      Species 
     ##    "numeric"    "numeric"    "numeric"    "numeric"     "factor"
 
-    ##   Sepal.Length Sepal.Width Petal.Length Petal.Width Species
-    ## 1          5.1         3.5          1.4         0.2      No
-    ## 3          4.7         3.2          1.3         0.2      No
-    ## 5          5.0         3.6          1.4         0.2      No
-    ## 6          5.4         3.9          1.7         0.4      No
-    ## 7          4.6         3.4          1.4         0.3      No
-    ## 8          5.0         3.4          1.5         0.2      No
+    ##    Sepal.Length Sepal.Width Petal.Length Petal.Width Species
+    ## 4           4.6         3.1          1.5         0.2      No
+    ## 5           5.0         3.6          1.4         0.2      No
+    ## 6           5.4         3.9          1.7         0.4      No
+    ## 7           4.6         3.4          1.4         0.3      No
+    ## 8           5.0         3.4          1.5         0.2      No
+    ## 12          4.8         3.4          1.6         0.2      No
 
     ## [1] "No"  "Yes"
 
@@ -272,40 +272,60 @@ ranging from 0 to 0.1 in 0.01 increments.
     ## Number of resamples: 10 
     ## 
     ## ROC 
-    ##                          Min.   1st Qu.    Median      Mean   3rd Qu. Max. NA's
-    ## logistic_regression 0.7619048 0.8125000 0.8571429 0.8642857 0.8839286    1    0
-    ## Elastic_net         0.4642857 0.7113095 0.8928571 0.8309524 1.0000000    1    0
-    ## knn                 0.9523810 1.0000000 1.0000000 0.9934524 1.0000000    1    0
-    ## DT                  0.7619048 0.9151786 0.9404762 0.9339286 1.0000000    1    0
-    ## RF                  1.0000000 1.0000000 1.0000000 1.0000000 1.0000000    1    0
-    ## XGboost             1.0000000 1.0000000 1.0000000 1.0000000 1.0000000    1    0
-    ## SVM_linear1         0.6428571 0.7142857 0.7500000 0.8095238 0.9404762    1    0
-    ## SVM_nonlinear       0.9523810 0.9732143 1.0000000 0.9880952 1.0000000    1    0
-    ## ANN                 1.0000000 1.0000000 1.0000000 1.0000000 1.0000000    1    0
+    ##                          Min.   1st Qu.    Median      Mean   3rd Qu.      Max.
+    ## logistic_regression 0.3214286 0.7916667 0.8333333 0.8071429 0.9196429 1.0000000
+    ## Elastic_net         0.4642857 0.7321429 0.8154762 0.7880952 0.8571429 1.0000000
+    ## knn                 0.9285714 1.0000000 1.0000000 0.9928571 1.0000000 1.0000000
+    ## DT                  0.8333333 0.8616071 0.9285714 0.9208333 0.9821429 1.0000000
+    ## RF                  0.9047619 1.0000000 1.0000000 0.9904762 1.0000000 1.0000000
+    ## XGboost             0.9642857 1.0000000 1.0000000 0.9928571 1.0000000 1.0000000
+    ## SVM_linear1         0.6071429 0.6250000 0.8095238 0.7761905 0.8928571 0.9642857
+    ## SVM_nonlinear       0.9523810 1.0000000 1.0000000 0.9952381 1.0000000 1.0000000
+    ## ANN                 0.7142857 1.0000000 1.0000000 0.9666667 1.0000000 1.0000000
+    ##                     NA's
+    ## logistic_regression    0
+    ## Elastic_net            0
+    ## knn                    0
+    ## DT                     0
+    ## RF                     0
+    ## XGboost                0
+    ## SVM_linear1            0
+    ## SVM_nonlinear          0
+    ## ANN                    0
     ## 
     ## Sens 
-    ##                          Min.   1st Qu.    Median      Mean 3rd Qu. Max. NA's
-    ## logistic_regression 0.5714286 0.7500000 0.8571429 0.8571429       1    1    0
-    ## Elastic_net         0.4285714 0.7500000 0.9285714 0.8571429       1    1    0
-    ## knn                 0.8571429 1.0000000 1.0000000 0.9857143       1    1    0
-    ## DT                  0.7142857 0.8571429 1.0000000 0.9285714       1    1    0
-    ## RF                  0.8571429 1.0000000 1.0000000 0.9714286       1    1    0
-    ## XGboost             0.8571429 1.0000000 1.0000000 0.9714286       1    1    0
-    ## SVM_linear1         0.7142857 0.8571429 0.8571429 0.8857143       1    1    0
-    ## SVM_nonlinear       0.8571429 0.8571429 1.0000000 0.9428571       1    1    0
-    ## ANN                 0.8571429 0.8928571 1.0000000 0.9571429       1    1    0
+    ##                          Min.   1st Qu.    Median      Mean   3rd Qu. Max. NA's
+    ## logistic_regression 0.7142857 0.7142857 0.8571429 0.8571429 1.0000000    1    0
+    ## Elastic_net         0.7142857 0.7500000 0.8571429 0.8428571 0.8571429    1    0
+    ## knn                 0.8571429 0.8571429 1.0000000 0.9428571 1.0000000    1    0
+    ## DT                  0.7142857 0.8571429 0.9285714 0.9000000 1.0000000    1    0
+    ## RF                  0.8571429 0.8928571 1.0000000 0.9571429 1.0000000    1    0
+    ## XGboost             0.8571429 0.8571429 1.0000000 0.9428571 1.0000000    1    0
+    ## SVM_linear1         0.5714286 0.8571429 0.9285714 0.8857143 1.0000000    1    0
+    ## SVM_nonlinear       0.8571429 0.8928571 1.0000000 0.9571429 1.0000000    1    0
+    ## ANN                 0.7142857 0.8928571 1.0000000 0.9285714 1.0000000    1    0
     ## 
     ## Spec 
-    ##                          Min.   1st Qu.    Median      Mean   3rd Qu. Max. NA's
-    ## logistic_regression 0.0000000 0.2708333 0.5833333 0.5250000 0.7500000    1    0
-    ## Elastic_net         0.0000000 0.3125000 0.5833333 0.5250000 0.6666667    1    0
-    ## knn                 0.7500000 1.0000000 1.0000000 0.9750000 1.0000000    1    0
-    ## DT                  0.6666667 0.8125000 1.0000000 0.9083333 1.0000000    1    0
-    ## RF                  1.0000000 1.0000000 1.0000000 1.0000000 1.0000000    1    0
-    ## XGboost             1.0000000 1.0000000 1.0000000 1.0000000 1.0000000    1    0
-    ## SVM_linear1         0.2500000 0.3333333 0.4166667 0.5083333 0.5000000    1    0
-    ## SVM_nonlinear       0.6666667 0.8125000 1.0000000 0.9083333 1.0000000    1    0
-    ## ANN                 1.0000000 1.0000000 1.0000000 1.0000000 1.0000000    1    0
+    ##                          Min.   1st Qu.    Median      Mean 3rd Qu.      Max.
+    ## logistic_regression 0.0000000 0.2708333 0.4166667 0.4583333   0.625 1.0000000
+    ## Elastic_net         0.0000000 0.2708333 0.4166667 0.4500000   0.625 1.0000000
+    ## knn                 0.6666667 1.0000000 1.0000000 0.9416667   1.000 1.0000000
+    ## DT                  0.6666667 1.0000000 1.0000000 0.9416667   1.000 1.0000000
+    ## RF                  0.3333333 1.0000000 1.0000000 0.9333333   1.000 1.0000000
+    ## XGboost             0.7500000 1.0000000 1.0000000 0.9500000   1.000 1.0000000
+    ## SVM_linear1         0.2500000 0.2708333 0.3333333 0.4083333   0.500 0.6666667
+    ## SVM_nonlinear       0.6666667 1.0000000 1.0000000 0.9416667   1.000 1.0000000
+    ## ANN                 0.6666667 0.8125000 1.0000000 0.9083333   1.000 1.0000000
+    ##                     NA's
+    ## logistic_regression    0
+    ## Elastic_net            0
+    ## knn                    0
+    ## DT                     0
+    ## RF                     0
+    ## XGboost                0
+    ## SVM_linear1            0
+    ## SVM_nonlinear          0
+    ## ANN                    0
 
 ![](Readme_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
 
@@ -313,46 +333,55 @@ ranging from 0 to 0.1 in 0.01 increments.
 
 ## ROC curve
 
-    ##  [1] No  No  No  No  No  No  No  No  No  No  No  No  Yes Yes Yes Yes Yes Yes Yes
-    ## [20] Yes Yes Yes Yes Yes Yes Yes Yes No  No  No  No  No  No  No  No  No  No  No 
+    ##  [1] No  No  No  No  No  No  No  No  No  No  No  No  No  No  No  No  No  No  No 
+    ## [20] No  No  No  Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes No 
     ## [39] No  No  No  No  No  No  No 
     ## Levels: No Yes
 
     ##                
     ## predictions_svm No Yes
-    ##             No  30   3
-    ##             Yes  0  12
+    ##             No  30   2
+    ##             Yes  0  13
 
     ## Confusion Matrix and Statistics
     ## 
     ##           Reference
     ## Prediction No Yes
-    ##        No  30   3
-    ##        Yes  0  12
-    ##                                          
-    ##                Accuracy : 0.9333         
-    ##                  95% CI : (0.8173, 0.986)
-    ##     No Information Rate : 0.6667         
-    ##     P-Value [Acc > NIR] : 2.435e-05      
-    ##                                          
-    ##                   Kappa : 0.8421         
-    ##                                          
-    ##  Mcnemar's Test P-Value : 0.2482         
-    ##                                          
-    ##             Sensitivity : 1.0000         
-    ##             Specificity : 0.8000         
-    ##          Pos Pred Value : 0.9091         
-    ##          Neg Pred Value : 1.0000         
-    ##              Prevalence : 0.6667         
-    ##          Detection Rate : 0.6667         
-    ##    Detection Prevalence : 0.7333         
-    ##       Balanced Accuracy : 0.9000         
-    ##                                          
-    ##        'Positive' Class : No             
+    ##        No  30   2
+    ##        Yes  0  13
+    ##                                           
+    ##                Accuracy : 0.9556          
+    ##                  95% CI : (0.8485, 0.9946)
+    ##     No Information Rate : 0.6667          
+    ##     P-Value [Acc > NIR] : 3.227e-06       
+    ##                                           
+    ##                   Kappa : 0.8966          
+    ##                                           
+    ##  Mcnemar's Test P-Value : 0.4795          
+    ##                                           
+    ##             Sensitivity : 1.0000          
+    ##             Specificity : 0.8667          
+    ##          Pos Pred Value : 0.9375          
+    ##          Neg Pred Value : 1.0000          
+    ##              Prevalence : 0.6667          
+    ##          Detection Rate : 0.6667          
+    ##    Detection Prevalence : 0.7111          
+    ##       Balanced Accuracy : 0.9333          
+    ##                                           
+    ##        'Positive' Class : No              
     ## 
 
     ##  [1] No No No No No No No No No No
     ## Levels: No Yes
+
+    ## Setting levels: control = No, case = Yes
+
+    ## Setting direction: controls < cases
+
+    ## Warning in ci.auc.roc(roc, ...): ci.auc() of a ROC curve with AUC == 1 is
+    ## always 1-1 and can be misleading.
+
+![](Readme_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
 ## Random Over sampling
 

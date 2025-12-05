@@ -285,7 +285,7 @@ library(NeuralNetTools)
 plotnet(mod_in = fit.ann$finalModel, # nnet object
         pos_col = "darkgreen", # positive weights are shown in green
         neg_col = "darkred", # negative weights are shown in red
-        bias = FALSE, # do not plot bias
+        bias = T, # do not plot bias
         circle_cex = 4, # reduce circle size (default is 5)
         cex_val = 0.6) # reduce text label size (default is 1)
 ```
@@ -392,14 +392,14 @@ predictions_svm_test2 <- predict(fit.svm_nonlinear, Testing_data ,type = "prob")
      predictions_svm2 <- predict(fit.svm_nonlinear, Testing_data)
 predictions_svm2[1:10]
 ```
-```{r, eval=FALSE}
+```{r}
 par(pty = "s")
 # creat confusion matrix for comparison
 
 conmatrix_svm2 <- confusionMatrix(as.factor(predictions_svm2 ),
                                   as.factor(Testing_data$Species))
 
-      outcome = ifelse(Testing_data$Species == "NO", 0, 1)
+      outcome = ifelse(Testing_data$Species == "No", 0, 1)
       
       
     outcome_clean <- factor(outcome, levels = c(0, 1), labels = c("No", "Yes"))
