@@ -127,12 +127,262 @@ Features <- read.csv("Data/2017.SUP5.Global_translational_reprogramming_RMOTIF.c
 AllInfo <- merge(Transcription_Translation, Features , by.x =  "GeneID", all.x = T)
 
 TISNET_Rmotif <- merge(TISNET_Shape, AllInfo,  by.x =  "GeneID")
+
+TISNET_Rmotif$Rmotif <- is.na(TISNET_Rmotif$score)
+TISNET_Rmotif$Rmotif <- as.factor(TISNET_Rmotif$Rmotif)
 table(TISNET_Rmotif$AUG_Hairpin)
-table(is.na(TISNET_Rmotif$score))
-table(is.na(TISNET_Rmotif$score),TISNET_Rmotif$AUG_Hairpin)
+table(TISNET_Rmotif$Rmotif)
+table(TISNET_Rmotif$Rmotif,TISNET_Rmotif$AUG_Hairpin)
+```
+
+## Target of Classification 
+
+```{r}
+library(dplyr, quietly = T)
+TISNET_Rmotif_class<- TISNET_Rmotif %>%
+mutate(Regulation = case_when(
+    Ribolog2fc >= 1 &  Ribo_adjp < 0.05  ~ "Up", 
+    Ribolog2fc <= -1 &  Ribo_adjp < 0.05  ~ "Down", 
+    (Ribolog2fc > -1 | Ribolog2fc < 1 ) | Ribo_adjp >= 0.05  ~ "NonDTG"
+    ))
+# Number of RNA structred genes with differential translation
+table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$AUG_Hairpin)
+# Number of R motif genes with differential translation
+table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$Rmotif)
+
+# Removing ID column 
+row.names(TISNET_Rmotif_class) <- TISNET_Rmotif_class$GeneID 
+TISNET_Rmotif_class <- TISNET_Rmotif_class[,-1] 
+
+TISNET_Rmotif_class$Regulation <- as.factor(TISNET_Rmotif_class$Regulation)
+TISNET_Rmotif_class$AUG_Hairpin  <- as.factor(TISNET_Rmotif_class$AUG_Hairpin )
+
+TISNET_Rmotif_final <- TISNET_Rmotif_class[!is.na(TISNET_Rmotif_class$Regulation),]
+TISNET_Rmotif_final <- TISNET_Rmotif_final[,c(-13,-14)]
+```
+
+# 3. Exploratory Data Analysis 
+
+```{r}
+library(table1, quietly = T)
+table1(~.| Regulation, data= TISNET_Rmotif_final[,c(1:6,8,10:15,17:25)])
+```
+The data integration reduced severely the number of genes to test, from a total of 3392 to 1793, from which only 470 has R motif prediction, distributed like 73 without AUG initiating RNA structure and 397 AUG initiating structure. 
+
+
+# 4. Train–Test Split and Preprocessing
+
+Take a sample of 70% of observations (1255)
+
+```{r}
+library(caret, quietly = T)
+set.seed(140892)
+Training_index <- createDataPartition(TISNET_Rmotif_final$Regulation,
+                                     p = 0.7,
+                                     list = FALSE)
+# Training Data
+    Training_data <- TISNET_Rmotif_final[Training_index, ]
+        dim(Training_data)
+
+        
+        
+# select 30% of the data for Testing
+Testing_data <- TISNET_Rmotif_final[-Training_index , ]
+table(Testing_data$Regulation, Testing_data$Rmotif)
+
+# summarize the class distribution
+library(ggplot2, quietly = T)
+percentage <- as.data.frame( round( prop.table(table(Training_data$Regulation)) * 100, 1) )
+
+
+ggplot(percentage, aes(x = "", y = Freq, fill = Var1)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  theme_void() +
+  labs(fill = "Translation regulation")
+          
+```
+
+```{r, eval=FALSE}
+
+x <- Training_data[,c(2:6,8,10:12)]
+y <- Training_data[,25]
+
+
+featurePlot(x = x, y = y, plot = "ellipse")
+```
+## set the cross-validation and metric
+
+```{r cross val}
+# Run algorithms using 10-fold cross Testing
+control <-  trainControl(
+  method = "cv", number = 10,
+        summaryFunction = twoClassSummary,
+             classProbs = TRUE # Super important!
+  # verboseIter = TRUE
+)
+metric <- "ROC" # binary outcome varaibles
+```
+
+
+# 5. Baseline Models: Logistics regression
+
+To run twoClassSummary despite describing the Regulatory output with three categories, Down and Up regulated translation were merge into the single category DTG.
+
+```{r logistics reg}
+set.seed(140892)
+
+
+Training_dataNonMissing<- Training_data[,c(1:6,10:12,24,25)] %>%
+mutate(RegulationFinal = case_when(
+    Regulation == "Up" ~ "DTG", 
+    Regulation == "Down" ~ "DTG", 
+    Regulation == "NonDTG" ~ "NonDTG", 
+    ))
+
+Training_dataNonMissing<- Training_dataNonMissing[,-11]
+# fit logistic regression
+fit.glm <- train(RegulationFinal~., data = Training_dataNonMissing,
+               method = "glm",
+               metric = metric,
+               trControl = control)
+fit.glm
+```
+
+# 6. Regularised Logistic Regression : LASSO
+
+```{r lasso fit}
+#####..........................................
+# fit LASSO, Elastic, Net
+fit.glmnet <- train(RegulationFinal~., data = Training_dataNonMissing,
+                  method = "glmnet",
+                  metric = metric,
+                  trControl = control)
+fit.glmnet
+```
+# 7. Tree-Based Model: Random Forest
+
+```{r rf fit}
+# fit random forest
+
+  fit.rf <- train(RegulationFinal~.,
+                   data = Training_dataNonMissing, 
+                   method = "rf",
+                   metric = metric,
+                   trControl = control)
 
 ```
-The data integration reduced severly the number of genes to test, from a total of 3392 to 1793, from which only 470 has R motif prediction, distributed like 73 without AUG initiating RNA structure and 397 AUG initiating structure. 
+
+```{r gbm}
+library(xgboost)
+fit.xgboost <- train(RegulationFinal~.,
+                data = Training_dataNonMissing, 
+                method = "gbm", #
+                metric = metric,verbose = FALSE,
+                trControl = control)
+```
+
+## Varible importance
+
+```{r var imp plot}
+library(gbm)
+plot(varImp(fit.xgboost))
+```
+
+# 8. Support Vector Machine (SVM)
+
+```{r svm}
+# linear SVM
+fit.svm <- train(RegulationFinal~.,
+                data = Training_dataNonMissing, 
+                method = "svmLinear",
+                metric = metric,
+                trControl = control)
+
+###############################################
+# None-linear SVM
+library(kernlab)
+fit.svm_nonlinear <- train(RegulationFinal~.,
+                 data = Training_dataNonMissing, 
+                 method = "svmRadial",
+                 metric = metric,
+                 trControl = control)
+
+```
+
+# 9 Overall Model Comparison 
+
+
+```{r}
+#.................. summarize accuracy of models ........................
+#
+results <- resamples(list(logistic_regression = fit.glm,
+                          lasso = fit.glmnet,
+                          RF = fit.rf,
+                          XGboost = fit.xgboost,
+                          SVM_linear1 = fit.svm,
+                          SVM_nonlinear = fit.svm_nonlinear
+                          ))
+summary(results)
+
+##########################
+# compare accuracy of models
+dotplot(results)
+```
+
+# ROC curve
+
+```{r}
+#..................... estimate skill of LR on the Testing dataset
+Testing_dataFinal<- Testing_data[,c(1:6,10:12,24,25)] %>%
+mutate(RegulationFinal = case_when(
+    Regulation == "Up" ~ "DTG", 
+    Regulation == "Down" ~ "DTG", 
+    Regulation == "NonDTG" ~ "NonDTG", 
+    ))
+ Testing_dataFinal$RegulationFinal <- as.factor(Testing_dataFinal$RegulationFinal)
+predictions_LR <- predict(fit.glm, Testing_dataFinal )
+
+table(predictions_LR , Testing_dataFinal$RegulationFinal)
+confusionMatrix(predictions_LR , Testing_dataFinal$RegulationFinal)
+
+```
+```{r}
+library(pROC)
+
+par(pty = "s")
+# creat confusion matrix for comparison
+
+predictions_lr_2 <- predict(fit.glm, Testing_dataFinal ,type = "prob")
+
+      outcome = ifelse(Testing_dataFinal$RegulationFinal == "NonDTG", 0, 1)
+      
+      
+    outcome_clean <- factor(outcome, levels = c(0, 1), labels = c("NonDTG", "DTG"))
+
+outcome_clean <- droplevels(outcome_clean)
+      ##### create ROC
+roc_lr_test = roc(response  = outcome_clean,
+                     predictor = predictions_lr_2$DTG,
+                     plot       = TRUE,
+                     ci         = TRUE,
+                     legacy.axes= TRUE,
+                     percent    = TRUE,
+                     xlab       = "False Positive Percentage",
+                     ylab       = "True Positive Percentage", 
+                     col        = 1,
+                     lwd        = 4,
+                     print.auc  = TRUE,
+                     print.auc.y= 60)
+
+roc_lr_test
+
+```
+# 10. Results Summary 
+
+Across all tested models, overall performance is very high. Most methods correctly classify gene translational state more than 97–98% of the time, meaning the problem is learnable and the signal in the data is strong. However, this was expected as most of the genes belong to the majority class (NonDTG), so a model can score high accuracy even if it misses many immune-related genes. Among all approaches, logistic regression showed the most stable and robust performance across cross-validation runs, combining high accuracy, high specificity and highes sensibility with strong balanced accuracy, recall, and well-calibrated probability estimates.
+
+Based on these results, logistic regression was selected as the primary predictive model due to its strong performance and interpretability. In parallel, LASSO-regularized logistic regression was retained as a complementary approach, as it achieved comparable predictive power while selecting a reduced set of informative features. More complex models, including random forests, gradient boosting, and nonlinear support vector machines, did not provide clear performance advantages and were therefore not prioritized.
 
 
 # References
