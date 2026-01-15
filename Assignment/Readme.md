@@ -140,6 +140,7 @@ and [supplementary file
 5](https://static-content.springer.com/esm/art%3A10.1038%2Fnature22371/MediaObjects/41586_2017_BFnature22371_MOESM6_ESM.xlsx)
 
 ``` r
+library(dplyr, quietly = T)
 Transcription_Translation <- read.csv("Data/2017.SUP1.Global_translational_reprogramming_RNARibo.csv", header = T)
 colnames(Transcription_Translation)<- gsub("geneID","GeneID",colnames(Transcription_Translation))
 Features <- read.csv("Data/2017.SUP5.Global_translational_reprogramming_RMOTIF.csv", header = T)
@@ -174,10 +175,75 @@ table(TISNET_Rmotif$Rmotif,TISNET_Rmotif$AUG_Hairpin)
     ##   FALSE   73  397
     ##   TRUE   213 1110
 
+``` r
+Rmotif_Harpin <- TISNET_Rmotif[  TISNET_Rmotif$AUG_Hairpin == "1",c(seq(1,13),27)]
+
+Rmotif_Harpin$Direction <- 
+Rmotif_Harpin$RNAlog2fc * 
+Rmotif_Harpin$Ribolog2fc
+Rmotif_Harpin_Classified <- Rmotif_Harpin %>%
+mutate(TranslationCat = case_when(
+    Ribo_adjp< 0.05 & RNA_adjp < 0.05  & abs(log2_TEfc) <= 0.5 ~ "Forwarded" ,
+    Ribo_adjp< 0.05 & RNA_adjp > 0.05  ~ "Exclusive",
+    Ribo_adjp< 0.05 & RNA_adjp < 0.05 &  abs(log2_TEfc) > 0.5 & Direction >= 0 ~ "Intensified",
+    Ribo_adjp< 0.05 & RNA_adjp < 0.05 &  abs(log2_TEfc) > 0.5 & Direction < 0 ~ "Buffered",
+    Ribo_adjp> 0.05 & RNA_adjp < 0.05 &  abs(log2_TEfc) > 0.5  ~ "Buffered_S",
+    TRUE ~ "Non DTG"
+  ))
+
+
+library(org.At.tair.db)
+Rmotif_Harpin_Classified$genename <- mapIds(x =org.At.tair.db  ,
+                   keys = Rmotif_Harpin_Classified$GeneID, 
+                   column =  "SYMBOL", 
+                   keytype = "TAIR",
+                   multiVals = "first")
+
+Rmotif_Harpin_Classified$description <- mapIds(x =org.At.tair.db  ,
+                       keys = Rmotif_Harpin_Classified$GeneID, 
+                       column =  "GENENAME", 
+                       keytype = "TAIR",
+                       multiVals = "first")
+write.csv(x = Rmotif_Harpin_Classified[,c(1,17,2,14,16,seq(3,13),15),18],file = "Rmotif_Harpin_Integration.csv", row.names = F)
+table(Rmotif_Harpin_Classified$Rmotif, Rmotif_Harpin_Classified$TranslationCat)
+```
+
+    ##        
+    ##         Buffered Buffered_S Exclusive Forwarded Intensified Non DTG
+    ##   FALSE        1         20         3        22           4     347
+    ##   TRUE         0         60         6        66          12     966
+
+``` r
+#Rmotif_Harpin_Classified[grepl("AT1G12580|AT2G45170|AT3G13520|AT3G62600|AT1G20650|AT3G22420|AT4G39540|AT3G01770|AT4G36990|AT3G11410|AT5G49450|AT1G70160|AT1G80780|AT1G64630", Rmotif_Harpin_Classified$GeneID),]
+########### Forwarded ###########
+#Genes driven by transcriptional regulation. These genes do not have a change in TE, and the change in RNA drives the change in RPFs.
+#Hence, genes that have significant ΔRPF and ΔRNA but that do not have a significant ΔTE fall into this class.
+
+########### Exclusive ###########
+# Genes regulated exclusively by translation. This means that the change in TE is driven by change in RPFs exclusively, 
+# and there is no change in mRNA counts. Hence, genes with significant ΔTE and ΔRPFs but no significant change in mRNA counts belong to this group. 
+
+########### Intensified and buffered ###########
+# Genes regulated both by transcriptional and translational regulation (significant ΔRNA, ΔRPFs, and ΔTE) include intensified and buffered genes.
+# These genes are both DTGs and DTEGs. 
+
+########### Intensified ###########
+# Genes for which the translational regulation acts with the transcriptional regulation change. 
+# These genes have the translational change in the same direction as their transcriptional change: 
+
+########### Buffered ###########
+# Genes for which the translational regulation counteracts the transcriptional regulation change. 
+# In these genes, the transcriptional change (ΔRNA) and translational efficiency change (ΔTE) are in the opposite direction:
+
+########### Buffered special ###########
+# There is also a special case of buffered genes wherein the transcriptional change is cancelled 
+# out by the change in TE to the point of no significant change in RPFs. Hence, genes with significant ΔTE and ΔRNA  
+# but that do not have a significant ΔRPF are also considered as translationally buffered. 
+```
+
 ## Target of Classification
 
 ``` r
-library(dplyr, quietly = T)
 TISNET_Rmotif_class<- TISNET_Rmotif %>%
 mutate(Regulation = case_when(
     Ribolog2fc >= 1 &  Ribo_adjp < 0.05  ~ "Up", 
@@ -1231,6 +1297,18 @@ library(pROC)
 
     ## 
     ## Attaching package: 'pROC'
+
+    ## The following objects are masked from 'package:IRanges':
+    ## 
+    ##     cov, var
+
+    ## The following objects are masked from 'package:S4Vectors':
+    ## 
+    ##     cov, var
+
+    ## The following object is masked from 'package:BiocGenerics':
+    ## 
+    ##     var
 
     ## The following objects are masked from 'package:stats':
     ## 
