@@ -107,7 +107,7 @@ grep -vf <( awk '{ print $1} ' TISNET_Shape_Pos.txt) TISNET_Shape_Neg.txt  > TIS
 cat TISNET_Shape_Pos.txt TISNET_Shape_TrueNeg.txt > TISNET_Shape.txt 
 ```
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 TISNET_Shape <- read.csv("Data/TISNET_Shape.txt",sep = " ", header = FALSE)
 TISNET_Shape <- TISNET_Shape[,-2]
 
@@ -119,7 +119,7 @@ Which means, 535 genes has RNA structures in the 5'UTR that do not govern the st
 
 The additional data comes from the supplementary files of @xu2017global, specially the [supplementary file 1](https://static-content.springer.com/esm/art%3A10.1038%2Fnature22371/MediaObjects/41586_2017_BFnature22371_MOESM2_ESM.xlsx) and [supplementary file 5](https://static-content.springer.com/esm/art%3A10.1038%2Fnature22371/MediaObjects/41586_2017_BFnature22371_MOESM6_ESM.xlsx)
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 Transcription_Translation <- read.csv("Data/2017.SUP1.Global_translational_reprogramming_RNARibo.csv", header = T)
 colnames(Transcription_Translation)<- gsub("geneID","GeneID",colnames(Transcription_Translation))
 Features <- read.csv("Data/2017.SUP5.Global_translational_reprogramming_RMOTIF.csv", header = T)
@@ -137,7 +137,7 @@ table(TISNET_Rmotif$Rmotif,TISNET_Rmotif$AUG_Hairpin)
 
 ## Target of Classification 
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library(dplyr, quietly = T)
 TISNET_Rmotif_class<- TISNET_Rmotif %>%
 mutate(Regulation = case_when(
@@ -149,13 +149,14 @@ mutate(Regulation = case_when(
 table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$AUG_Hairpin)
 # Number of R motif genes with differential translation
 table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$Rmotif)
-
+table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$Rmotif, TISNET_Rmotif$AUG_Hairpin)
 # Removing ID column 
 row.names(TISNET_Rmotif_class) <- TISNET_Rmotif_class$GeneID 
 TISNET_Rmotif_class <- TISNET_Rmotif_class[,-1] 
 
 TISNET_Rmotif_class$Regulation <- as.factor(TISNET_Rmotif_class$Regulation)
 TISNET_Rmotif_class$AUG_Hairpin  <- as.factor(TISNET_Rmotif_class$AUG_Hairpin )
+table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$Rmotif, TISNET_Rmotif$AUG_Hairpin)
 
 TISNET_Rmotif_final <- TISNET_Rmotif_class[!is.na(TISNET_Rmotif_class$Regulation),]
 TISNET_Rmotif_final <- TISNET_Rmotif_final[,c(-13,-14)]
@@ -163,7 +164,7 @@ TISNET_Rmotif_final <- TISNET_Rmotif_final[,c(-13,-14)]
 
 # 3. Exploratory Data Analysis 
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library(table1, quietly = T)
 table1(~.| Regulation, data= TISNET_Rmotif_final[,c(1:6,8,10:15,17:25)])
 ```
@@ -182,14 +183,14 @@ Training_index <- createDataPartition(TISNET_Rmotif_final$Regulation,
                                      list = FALSE)
 # Training Data
     Training_data <- TISNET_Rmotif_final[Training_index, ]
-        dim(Training_data)
+        
 
-        
-        
+        table(Training_data$Regulation)
+        table(Training_data$Regulation, Training_data$AUG_Hairpin)
 # select 30% of the data for Testing
 Testing_data <- TISNET_Rmotif_final[-Training_index , ]
 table(Testing_data$Regulation, Testing_data$Rmotif)
-
+  table(Testing_data$Regulation, Testing_data$AUG_Hairpin)
 # summarize the class distribution
 library(ggplot2, quietly = T)
 percentage <- as.data.frame( round( prop.table(table(Training_data$Regulation)) * 100, 1) )
@@ -203,17 +204,36 @@ ggplot(percentage, aes(x = "", y = Freq, fill = Var1)) +
           
 ```
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, message=FALSE, warning=FALSE}
 
-x <- Training_data[,c(2:6,8,10:12)]
+x <- Training_data[,c(2:5)]
+#x <- Training_data[,c(2:6,8,10:12)]
+
 y <- Training_data[,25]
-
-
+#24 R motitf
+#1 AUG hairpin
+svg(filename = "Figures/featurePlot_DTGs.svg",   width = 10, height = 8)
 featurePlot(x = x, y = y, plot = "ellipse")
+dev.off()
 ```
+::: {style="text-align: center;"}
+<figure>
+```{=html}
+<img src="Figures/featurePlot_DTGs.svg" style="width: 80%;
+height: 100%"/>
+```
+<figcaption style="margin-top: 10px;">
+
+<strong>RNA and Riboassociated leves vs DTG state</strong>
+
+</figcaption>
+</figure>
+<a name="featurePlot_DTGs.svg"></a>
+:::
+
 ## set the cross-validation and metric
 
-```{r cross val}
+```{r cross val, message=FALSE, warning=FALSE}
 # Run algorithms using 10-fold cross Testing
 control <-  trainControl(
   method = "cv", number = 10,
@@ -229,7 +249,7 @@ metric <- "ROC" # binary outcome varaibles
 
 To run twoClassSummary despite describing the Regulatory output with three categories, Down and Up regulated translation were merge into the single category DTG.
 
-```{r logistics reg}
+```{r logistics reg, message=FALSE, warning=FALSE}
 set.seed(140892)
 
 
@@ -247,11 +267,24 @@ fit.glm <- train(RegulationFinal~., data = Training_dataNonMissing,
                metric = metric,
                trControl = control)
 fit.glm
+
+
+coefs_df <- data.frame(
+  feature = names(coef(fit.glm$finalModel)),
+  coef = coef(fit.glm$finalModel)
+)
+
+ggplot(coefs_df[-1, ], aes(x = reorder(feature, coef), y = coef)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "Feature", y = "Log-odds coefficient")
+
+
 ```
 
 # 6. Regularised Logistic Regression : LASSO
 
-```{r lasso fit}
+```{r lasso fit, message=FALSE, warning=FALSE}
 #####..........................................
 # fit LASSO, Elastic, Net
 fit.glmnet <- train(RegulationFinal~., data = Training_dataNonMissing,
@@ -262,7 +295,7 @@ fit.glmnet
 ```
 # 7. Tree-Based Model: Random Forest
 
-```{r rf fit}
+```{r rf fit, message=FALSE, warning=FALSE}
 # fit random forest
 
   fit.rf <- train(RegulationFinal~.,
@@ -273,7 +306,7 @@ fit.glmnet
 
 ```
 
-```{r gbm}
+```{r gbm, message=FALSE, warning=FALSE}
 library(xgboost)
 fit.xgboost <- train(RegulationFinal~.,
                 data = Training_dataNonMissing, 
@@ -284,14 +317,14 @@ fit.xgboost <- train(RegulationFinal~.,
 
 ## Varible importance
 
-```{r var imp plot}
+```{r var imp plot, message=FALSE, warning=FALSE}
 library(gbm)
 plot(varImp(fit.xgboost))
 ```
 
 # 8. Support Vector Machine (SVM)
 
-```{r svm}
+```{r svm, message=FALSE, warning=FALSE}
 # linear SVM
 fit.svm <- train(RegulationFinal~.,
                 data = Training_dataNonMissing, 
@@ -313,7 +346,7 @@ fit.svm_nonlinear <- train(RegulationFinal~.,
 # 9 Overall Model Comparison 
 
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 #.................. summarize accuracy of models ........................
 #
 results <- resamples(list(logistic_regression = fit.glm,
@@ -332,7 +365,7 @@ dotplot(results)
 
 # ROC curve
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 #..................... estimate skill of LR on the Testing dataset
 Testing_dataFinal<- Testing_data[,c(1:6,10:12,24,25)] %>%
 mutate(RegulationFinal = case_when(
@@ -341,11 +374,16 @@ mutate(RegulationFinal = case_when(
     Regulation == "NonDTG" ~ "NonDTG", 
     ))
  Testing_dataFinal$RegulationFinal <- as.factor(Testing_dataFinal$RegulationFinal)
-predictions_LR <- predict(fit.glm, Testing_dataFinal )
 
+ # LR
+ predictions_LR <- predict(fit.glm, Testing_dataFinal )
 table(predictions_LR , Testing_dataFinal$RegulationFinal)
 confusionMatrix(predictions_LR , Testing_dataFinal$RegulationFinal)
 
+# XGBoost
+predictions_XGB <- predict(fit.xgboost, Testing_dataFinal )
+table(predictions_XGB , Testing_dataFinal$RegulationFinal)
+confusionMatrix(predictions_XGB , Testing_dataFinal$RegulationFinal)
 ```
 ```{r}
 library(pROC)

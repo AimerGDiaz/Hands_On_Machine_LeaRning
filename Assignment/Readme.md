@@ -178,22 +178,6 @@ table(TISNET_Rmotif$Rmotif,TISNET_Rmotif$AUG_Hairpin)
 
 ``` r
 library(dplyr, quietly = T)
-```
-
-    ## Warning: package 'dplyr' was built under R version 4.3.3
-
-    ## 
-    ## Attaching package: 'dplyr'
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     filter, lag
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     intersect, setdiff, setequal, union
-
-``` r
 TISNET_Rmotif_class<- TISNET_Rmotif %>%
 mutate(Regulation = case_when(
     Ribolog2fc >= 1 &  Ribo_adjp < 0.05  ~ "Up", 
@@ -222,13 +206,52 @@ table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$Rmotif)
     ##   Up        23   74
 
 ``` r
+table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$Rmotif, TISNET_Rmotif$AUG_Hairpin)
+```
+
+    ## , ,  = -1
+    ## 
+    ##         
+    ##          FALSE TRUE
+    ##   Down       0    0
+    ##   NonDTG    73  199
+    ##   Up         0   13
+    ## 
+    ## , ,  = 1
+    ## 
+    ##         
+    ##          FALSE TRUE
+    ##   Down       1    2
+    ##   NonDTG   373 1046
+    ##   Up        23   61
+
+``` r
 # Removing ID column 
 row.names(TISNET_Rmotif_class) <- TISNET_Rmotif_class$GeneID 
 TISNET_Rmotif_class <- TISNET_Rmotif_class[,-1] 
 
 TISNET_Rmotif_class$Regulation <- as.factor(TISNET_Rmotif_class$Regulation)
 TISNET_Rmotif_class$AUG_Hairpin  <- as.factor(TISNET_Rmotif_class$AUG_Hairpin )
+table(TISNET_Rmotif_class$Regulation,TISNET_Rmotif$Rmotif, TISNET_Rmotif$AUG_Hairpin)
+```
 
+    ## , ,  = -1
+    ## 
+    ##         
+    ##          FALSE TRUE
+    ##   Down       0    0
+    ##   NonDTG    73  199
+    ##   Up         0   13
+    ## 
+    ## , ,  = 1
+    ## 
+    ##         
+    ##          FALSE TRUE
+    ##   Down       1    2
+    ##   NonDTG   373 1046
+    ##   Up        23   61
+
+``` r
 TISNET_Rmotif_final <- TISNET_Rmotif_class[!is.na(TISNET_Rmotif_class$Regulation),]
 TISNET_Rmotif_final <- TISNET_Rmotif_final[,c(-13,-14)]
 ```
@@ -237,16 +260,6 @@ TISNET_Rmotif_final <- TISNET_Rmotif_final[,c(-13,-14)]
 
 ``` r
 library(table1, quietly = T)
-```
-
-    ## 
-    ## Attaching package: 'table1'
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     units, units<-
-
-``` r
 table1(~.| Regulation, data= TISNET_Rmotif_final[,c(1:6,8,10:15,17:25)])
 ```
 
@@ -802,10 +815,24 @@ Training_index <- createDataPartition(TISNET_Rmotif_final$Regulation,
                                      list = FALSE)
 # Training Data
     Training_data <- TISNET_Rmotif_final[Training_index, ]
-        dim(Training_data)
+        
+
+        table(Training_data$Regulation)
 ```
 
-    ## [1] 1255   25
+    ## 
+    ##   Down NonDTG     Up 
+    ##      3   1184     68
+
+``` r
+        table(Training_data$Regulation, Training_data$AUG_Hairpin)
+```
+
+    ##         
+    ##           -1   1
+    ##   Down     0   3
+    ##   NonDTG 207 977
+    ##   Up       8  60
 
 ``` r
 # select 30% of the data for Testing
@@ -818,6 +845,16 @@ table(Testing_data$Regulation, Testing_data$Rmotif)
     ##   Down       0    0
     ##   NonDTG   146  361
     ##   Up         8   21
+
+``` r
+  table(Testing_data$Regulation, Testing_data$AUG_Hairpin)
+```
+
+    ##         
+    ##           -1   1
+    ##   Down     0   0
+    ##   NonDTG  65 442
+    ##   Up       5  24
 
 ``` r
 # summarize the class distribution
@@ -835,12 +872,32 @@ ggplot(percentage, aes(x = "", y = Freq, fill = Var1)) +
 ![](Readme_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
 ``` r
-x <- Training_data[,c(2:6,8,10:12)]
+x <- Training_data[,c(2:5)]
+#x <- Training_data[,c(2:6,8,10:12)]
+
 y <- Training_data[,25]
-
-
+#24 R motitf
+#1 AUG hairpin
+svg(filename = "Figures/featurePlot_DTGs.svg",   width = 10, height = 8)
 featurePlot(x = x, y = y, plot = "ellipse")
+dev.off()
 ```
+
+<div style="text-align: center;">
+
+<figure>
+<img src="Figures/featurePlot_DTGs.svg" style="width: 80%;
+height: 100%"/>
+<figcaption style="margin-top: 10px;">
+
+<strong>RNA and Riboassociated leves vs DTG state</strong>
+
+</figcaption>
+</figure>
+
+<a name="featurePlot_DTGs.svg"></a>
+
+</div>
 
 ## set the cross-validation and metric
 
@@ -878,31 +935,6 @@ fit.glm <- train(RegulationFinal~., data = Training_dataNonMissing,
                method = "glm",
                metric = metric,
                trControl = control)
-```
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-``` r
 fit.glm
 ```
 
@@ -919,6 +951,20 @@ fit.glm
     ## 
     ##   ROC        Sens       Spec     
     ##   0.9571721  0.7482143  0.9957912
+
+``` r
+coefs_df <- data.frame(
+  feature = names(coef(fit.glm$finalModel)),
+  coef = coef(fit.glm$finalModel)
+)
+
+ggplot(coefs_df[-1, ], aes(x = reorder(feature, coef), y = coef)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "Feature", y = "Log-odds coefficient")
+```
+
+![](Readme_files/figure-gfm/logistics%20reg-1.png)<!-- -->
 
 # 6. Regularised Logistic Regression : LASSO
 
@@ -982,15 +1028,6 @@ fit.xgboost <- train(RegulationFinal~.,
 
 ``` r
 library(gbm)
-```
-
-    ## Warning: package 'gbm' was built under R version 4.3.3
-
-    ## Loaded gbm 2.2.2
-
-    ## This version of gbm is no longer under development. Consider transitioning to gbm3, https://github.com/gbm-developers/gbm3
-
-``` r
 plot(varImp(fit.xgboost))
 ```
 
@@ -1009,18 +1046,6 @@ fit.svm <- train(RegulationFinal~.,
 ###############################################
 # None-linear SVM
 library(kernlab)
-```
-
-    ## Warning: package 'kernlab' was built under R version 4.3.3
-
-    ## 
-    ## Attaching package: 'kernlab'
-
-    ## The following object is masked from 'package:ggplot2':
-    ## 
-    ##     alpha
-
-``` r
 fit.svm_nonlinear <- train(RegulationFinal~.,
                  data = Training_dataNonMissing, 
                  method = "svmRadial",
@@ -1110,8 +1135,9 @@ mutate(RegulationFinal = case_when(
     Regulation == "NonDTG" ~ "NonDTG", 
     ))
  Testing_dataFinal$RegulationFinal <- as.factor(Testing_dataFinal$RegulationFinal)
-predictions_LR <- predict(fit.glm, Testing_dataFinal )
 
+ # LR
+ predictions_LR <- predict(fit.glm, Testing_dataFinal )
 table(predictions_LR , Testing_dataFinal$RegulationFinal)
 ```
 
@@ -1148,6 +1174,49 @@ confusionMatrix(predictions_LR , Testing_dataFinal$RegulationFinal)
     ##          Detection Rate : 0.04478         
     ##    Detection Prevalence : 0.04851         
     ##       Balanced Accuracy : 0.91182         
+    ##                                           
+    ##        'Positive' Class : DTG             
+    ## 
+
+``` r
+# XGBoost
+predictions_XGB <- predict(fit.xgboost, Testing_dataFinal )
+table(predictions_XGB , Testing_dataFinal$RegulationFinal)
+```
+
+    ##                
+    ## predictions_XGB DTG NonDTG
+    ##          DTG     24      3
+    ##          NonDTG   5    504
+
+``` r
+confusionMatrix(predictions_XGB , Testing_dataFinal$RegulationFinal)
+```
+
+    ## Confusion Matrix and Statistics
+    ## 
+    ##           Reference
+    ## Prediction DTG NonDTG
+    ##     DTG     24      3
+    ##     NonDTG   5    504
+    ##                                           
+    ##                Accuracy : 0.9851          
+    ##                  95% CI : (0.9708, 0.9935)
+    ##     No Information Rate : 0.9459          
+    ##     P-Value [Acc > NIR] : 2.774e-06       
+    ##                                           
+    ##                   Kappa : 0.8493          
+    ##                                           
+    ##  Mcnemar's Test P-Value : 0.7237          
+    ##                                           
+    ##             Sensitivity : 0.82759         
+    ##             Specificity : 0.99408         
+    ##          Pos Pred Value : 0.88889         
+    ##          Neg Pred Value : 0.99018         
+    ##              Prevalence : 0.05410         
+    ##          Detection Rate : 0.04478         
+    ##    Detection Prevalence : 0.05037         
+    ##       Balanced Accuracy : 0.91083         
     ##                                           
     ##        'Positive' Class : DTG             
     ## 
